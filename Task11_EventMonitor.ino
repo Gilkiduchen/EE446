@@ -5,13 +5,11 @@
 #include <string.h>
 
 // ----------------------------- Thresholds -----------------------------
-float RH_JUMP_THRESHOLD = 4.0f;         // %RH rise from baseline
-float TEMP_RISE_THRESHOLD = 0.8f;       // deg C rise from baseline
-float MAG_SHIFT_THRESHOLD = 12.0f;      // magnetic metric shift from baseline
-int CLEAR_CHANGE_THRESHOLD = 120;       // clear channel absolute change
-float COLOR_RATIO_THRESHOLD = 0.12f;    // normalized RGB ratio shift
-const int CALIBRATION_SAMPLES = 24;
-const unsigned long CALIBRATION_SAMPLE_DELAY_MS = 20;
+const float RH_JUMP_THRESHOLD = 6.0f;         // %RH rise from baseline
+const float TEMP_RISE_THRESHOLD = 0.7f;       // deg C rise from baseline
+const float MAG_SHIFT_THRESHOLD = 15.0f;      // magnetic metric shift from baseline
+const int CLEAR_CHANGE_THRESHOLD = 60;       // clear channel absolute change
+const float COLOR_RATIO_THRESHOLD = 0.10f;    // normalized RGB ratio shift
 
 // ----------------------------- Timing / filtering -----------------------------
 const unsigned long UPDATE_MS = 250;
@@ -53,97 +51,6 @@ unsigned long lastTriggerMs = 0;
 
 bool isSameLabel(const char* a, const char* b) {
   return strcmp(a, b) == 0;
-}
-
-void calibrateThresholds() {
-  rhValue = HS300x.readHumidity();
-  tempValue = HS300x.readTemperature();
-
-  if (IMU.magneticFieldAvailable()) {
-    float mx, my, mz;
-    IMU.readMagneticField(mx, my, mz);
-    magValue = sqrt(mx * mx + my * my + mz * mz);
-  } else {
-    magValue = 0.0f;
-  }
-
-  if (APDS.colorAvailable()) {
-    APDS.readColor(rValue, gValue, bValue, clearValue);
-  } else {
-    rValue = 0;
-    gValue = 0;
-    bValue = 0;
-    clearValue = 0;
-  }
-
-  float sumRgb = (float)rValue + (float)gValue + (float)bValue;
-  if (sumRgb < 1.0f) {
-    sumRgb = 1.0f;
-  }
-  float rn = (float)rValue / sumRgb;
-  float gn = (float)gValue / sumRgb;
-  float bn = (float)bValue / sumRgb;
-
-  float rhMin = rhValue, rhMax = rhValue;
-  float tempMin = tempValue, tempMax = tempValue;
-  float magMin = magValue, magMax = magValue;
-  float clearMin = (float)clearValue, clearMax = (float)clearValue;
-  float rNormMin = rn, rNormMax = rn;
-  float gNormMin = gn, gNormMax = gn;
-  float bNormMin = bn, bNormMax = bn;
-
-  for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
-    delay(CALIBRATION_SAMPLE_DELAY_MS);
-
-    rhValue = HS300x.readHumidity();
-    tempValue = HS300x.readTemperature();
-
-    if (IMU.magneticFieldAvailable()) {
-      float mx, my, mz;
-      IMU.readMagneticField(mx, my, mz);
-      magValue = sqrt(mx * mx + my * my + mz * mz);
-    }
-
-    if (APDS.colorAvailable()) {
-      APDS.readColor(rValue, gValue, bValue, clearValue);
-    }
-
-    sumRgb = (float)rValue + (float)gValue + (float)bValue;
-    if (sumRgb < 1.0f) {
-      sumRgb = 1.0f;
-    }
-    rn = (float)rValue / sumRgb;
-    gn = (float)gValue / sumRgb;
-    bn = (float)bValue / sumRgb;
-
-    rhMin = fmin(rhMin, rhValue);
-    rhMax = fmax(rhMax, rhValue);
-    tempMin = fmin(tempMin, tempValue);
-    tempMax = fmax(tempMax, tempValue);
-    magMin = fmin(magMin, magValue);
-    magMax = fmax(magMax, magValue);
-    clearMin = fmin(clearMin, (float)clearValue);
-    clearMax = fmax(clearMax, (float)clearValue);
-    rNormMin = fmin(rNormMin, rn);
-    rNormMax = fmax(rNormMax, rn);
-    gNormMin = fmin(gNormMin, gn);
-    gNormMax = fmax(gNormMax, gn);
-    bNormMin = fmin(bNormMin, bn);
-    bNormMax = fmax(bNormMax, bn);
-  }
-
-  float rhSpan = rhMax - rhMin;
-  float tempSpan = tempMax - tempMin;
-  float magSpan = magMax - magMin;
-  float clearSpan = clearMax - clearMin;
-  float colorSpan = fmax(rNormMax - rNormMin,
-                    fmax(gNormMax - gNormMin, bNormMax - bNormMin));
-
-  RH_JUMP_THRESHOLD = fmin(8.0f, fmax(0.8f, rhSpan * 4.0f));
-  TEMP_RISE_THRESHOLD = fmin(2.5f, fmax(0.2f, tempSpan * 4.0f));
-  MAG_SHIFT_THRESHOLD = fmin(60.0f, fmax(4.0f, magSpan * 4.0f));
-  CLEAR_CHANGE_THRESHOLD = (int)(fmin(1024.0f, fmax(40.0f, clearSpan * 4.0f)) + 0.5f);
-  COLOR_RATIO_THRESHOLD = fmin(0.35f, fmax(0.03f, colorSpan * 3.0f));
 }
 
 void updateBaseline() {
@@ -229,7 +136,6 @@ void setup() {
     while (1) {}
   }
 
-  calibrateThresholds();
   Serial.println("Task 11 event monitor started.");
 }
 
@@ -301,7 +207,7 @@ void loop() {
     updateBaseline();
   }
 
-  // ----- Required output format (3 lines per update cycle) -----
+  // ----- Output -----
   Serial.print("raw,rh=");
   Serial.print(rhValue, 2);
   Serial.print(",temp=");
